@@ -1,0 +1,33 @@
+#!/bin/bash
+
+#############################################
+# Script : clean_var_logs.sh
+# Objectif : Libérer de l’espace sur /var
+# Auteur : Equipe Exploitation
+# Usage : sudo ./clean_var_logs.sh
+#############################################
+
+LOGFILE="/var/tmp/clean_var_logs_$(date +%F_%H-%M).log"
+
+echo "===== START CLEANUP $(date) =====" | tee -a $LOGFILE
+
+echo -e "\n[1] Disk usage BEFORE:" | tee -a $LOGFILE
+df -h /var | tee -a $LOGFILE
+
+echo -e "\n[2] Top consumers in /var/log:" | tee -a $LOGFILE
+du -h --max-depth=1 /var/log 2>/dev/null | sort -h | tee -a $LOGFILE
+
+echo -e "\n[3] Cleaning audit logs (>7 days)..." | tee -a $LOGFILE
+find /var/log/audit -type f -mtime +7 -print -delete 2>/dev/null | tee -a $LOGFILE
+
+echo -e "\n[4] Cleaning PCP logs (>7 days)..." | tee -a $LOGFILE
+find /var/log/pcp -type f -mtime +7 -print -delete 2>/dev/null | tee -a $LOGFILE
+
+echo -e "\n[5] Removing compressed logs (*.gz)..." | tee -a $LOGFILE
+find /var/log -type f -name "*.gz" -print -delete 2>/dev/null | tee -a $LOGFILE
+
+echo -e "\n[6] Disk usage AFTER:" | tee -a $LOGFILE
+df -h /var | tee -a $LOGFILE
+
+echo -e "\n===== CLEANUP COMPLETED $(date) =====" | tee -a $LOGFILE
+echo "Log file saved to: $LOGFILE"
