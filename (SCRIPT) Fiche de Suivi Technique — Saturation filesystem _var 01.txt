@@ -1,0 +1,75 @@
+#!/bin/bash
+
+#############################################
+# Script : clean_var_logs.sh
+# Objectif : Libérer de l’espace sur /var
+# Mode    : Production-ready
+# Usage   :
+#   sudo ./clean_var_logs.sh        -> normal mode
+#   sudo ./clean_var_logs.sh -n     -> dry-run mode
+#############################################
+
+THRESHOLD=80
+DRYRUN=false
+
+# Detect dry-run mode
+if [[ "$1" == "-n" ]]; then
+    DRYRUN=true
+fi
+
+LOGFILE="/var/tmp/clean_var_logs_$(date +%F_%H-%M).log"
+
+echo "===== START CLEANUP $(date) =====" | tee -a $LOGFILE
+echo "Dry-run mode: $DRYRUN" | tee -a $LOGFILE
+
+# Get /var usage %
+USAGE=$(df -h /var | awk 'NR==2 {print $5}' | sed 's/%//')
+
+echo "Current /var usage: ${USAGE}%" | tee -a $LOGFILE
+
+if [ "$USAGE" -lt "$THRESHOLD" ]; then
+    echo "Usage below ${THRESHOLD}%. No cleanup needed." | tee -a $LOGFILE
+    exit 0
+fi
+
+echo "Usage above ${THRESHOLD}%. Starting cleanup..." | tee -a $LOGFILE
+
+echo -e "\n[1] Disk usage BEFORE:" | tee -a $LOGFILE
+df -h /var | tee -a $LOGFILE
+
+echo -e "\n[2] Top consumers in /var/log:" | tee -a $LOGFILE
+du -h --max-depth=1 /var/log 2>/dev/null | sort -h | tee -a $LOGFILE
+
+# Function to clean with or without delete
+clean_logs() {
+    DIR=$1
+    DAYS=$2
+
+    if [ -d "$DIR" ]; then
+        echo -e "\nCleaning $DIR (>$DAYS days)..." | tee -a $LOGFILE
+        
+        if $DRYRUN; then
+            find "$DIR" -type f -mtime +$DAYS -print 2>/dev/null | tee -a $LOGFILE
+        else
+            find "$DIR" -type f -mtime +$DAYS -print -delete 2>/dev/null | tee -a $LOGFILE
+        fi
+    fi
+}
+
+clean_logs /var/log/audit 7
+clean_logs /var/log/pcp 7
+clean_logs /var/log/VeeamBackup 7
+
+if ! $DRYRUN; then
+    echo -e "\nRemoving compressed logs (*.gz)..." | tee -a $LOGFILE
+    find /var/log -type f -name "*.gz" -print -delete 2>/dev/null | tee -a $LOGFILE
+else
+    echo -e "\nDry-run: compressed logs that would be removed:" | tee -a $LOGFILE
+    find /var/log -type f -name "*.gz" -print 2>/dev/null | tee -a $LOGFILE
+fi
+
+echo -e "\n[3] Disk usage AFTER:" | tee -a $LOGFILE
+df -h /var | tee -a $LOGFILE
+
+echo -e "\n===== CLEANUP COMPLETED $(date) =====" | tee -a $LOGFILE
+echo "Log file saved to: $LOGFILE"
